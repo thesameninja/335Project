@@ -1,89 +1,120 @@
-#lang racket
+;; Simple Scheme Syntax Checker based on The Little Schemer ideas
 
+;; Check if an expression is valid
 (define (tls-syntax-checker expr)
   (cond
-    ;; Base cases
     ((number? expr) #t)
     ((boolean? expr) #t)
-    ((symbol? expr) (not (memq expr '(lambda cond quote)))) ; Symbols can't be keywords
-  
-    ;; Procedure application
+    ((symbol? expr)
+     (if (or (eq? expr 'lambda)
+             (eq? expr 'cond)
+             (eq? expr 'quote))
+         #f
+         #t))
     ((pair? expr)
-     (let ((head (car expr)))
+     (let ((first (car expr)))
        (cond
-         ;; Lambda expressions
-         ((eq? head 'lambda)
-          (and (proper-list? (cdr expr))
-               (let ((params (cadr expr)))
-                 (and (list? params)
-                      (andmap symbol? params)
-                      (tls-syntax-checker (caddr expr))))))
+         ((eq? first 'lambda)
+          (check-lambda (cdr expr)))
 
-         ;; Cond expressions
-         ((eq? head 'cond)
-          (and (proper-list? (cdr expr))
-               (andmap (lambda (clause)
-                         (and (proper-list? clause)
-                              (= (length clause) 2)
-                              (tls-syntax-checker (car clause))
-                              (tls-syntax-checker (cadr clause))))
-                       (cdr expr))))
+         ((eq? first 'cond)
+          (check-cond (cdr expr)))
 
-         ;; Quote expressions
-         ((eq? head 'quote)
-          (and (proper-list? (cdr expr))
-               (= (length (cdr expr)) 1)))
+         ((eq? first 'quote)
+          (check-quote (cdr expr)))
 
-         ;; Primitive applications (one argument)
-         ((memq head '(add1 sub1 zero? number? car cdr null? eq? atom?))
-          (and (proper-list? (cdr expr))
-               (= (length (cdr expr)) 1)
-               (tls-syntax-checker (cadr expr))))
+         ((primitive-one? first)
+          (check-primitive-one (cdr expr)))
 
-         ;; Primitive applications (two arguments)
-         ((eq? head 'cons)
-          (and (proper-list? (cdr expr))
-               (= (length (cdr expr)) 2)
-               (and (tls-syntax-checker (cadr expr))
-                    (tls-syntax-checker (caddr expr)))))
+         ((eq? first 'cons)
+          (check-cons (cdr expr)))
 
-         ;; General procedure application
          (else
-          (and (tls-syntax-checker head)
-               (andmap tls-syntax-checker (cdr expr)))))))
-
-    ;; Everything else is invalid
+          (check-application expr)))))
     (else #f)))
 
-;; Helper function to check for proper lists
+;; Check a lambda expression
+(define (check-lambda stuff)
+  (and (proper-list? stuff)
+       (pair? stuff)
+       (list-of-symbols? (car stuff))
+       (tls-syntax-checker (cadr stuff))))
+
+;; Check a cond expression
+(define (check-cond clauses)
+  (cond
+    ((null? clauses) #t)
+    (else
+     (and (pair? (car clauses))
+          (pair? (cdr (car clauses)))
+          (null? (cddr (car clauses)))
+          (tls-syntax-checker (car (car clauses)))
+          (tls-syntax-checker (cadr (car clauses)))
+          (check-cond (cdr clauses))))))
+
+;; Check a quote expression
+(define (check-quote stuff)
+  (and (pair? stuff)
+       (null? (cdr stuff))))
+
+;; Check one-argument primitives
+(define (check-primitive-one args)
+  (and (pair? args)
+       (null? (cdr args))
+       (tls-syntax-checker (car args))))
+
+;; Check cons
+(define (check-cons args)
+  (and (pair? args)
+       (pair? (cdr args))
+       (null? (cddr args))
+       (tls-syntax-checker (car args))
+       (tls-syntax-checker (cadr args))))
+
+;; General application
+(define (check-application expr)
+  (and (tls-syntax-checker (car expr))
+       (check-args (cdr expr))))
+
+;; Check all arguments in a list
+(define (check-args lst)
+  (cond
+    ((null? lst) #t)
+    (else (and (tls-syntax-checker (car lst))
+               (check-args (cdr lst))))))
+
+;; Check if a list only has symbols
+(define (list-of-symbols? lst)
+  (cond
+    ((null? lst) #t)
+    (else (and (symbol? (car lst))
+               (list-of-symbols? (cdr lst))))))
+
+;; Check if a list is proper
 (define (proper-list? x)
   (cond
     ((null? x) #t)
     ((pair? x) (proper-list? (cdr x)))
     (else #f)))
 
-;; Helper to check for unbound variables
-(define (check-unbound-vars expr env)
-  (cond
-    ((symbol? expr)
-     (if (memq expr env) #t (error "Unbound variable:" expr)))
+;; Recognize one-argument primitives
+(define (primitive-one? name)
+  (or (eq? name 'add1)
+      (eq? name 'sub1)
+      (eq? name 'zero?)
+      (eq? name 'number?)
+      (eq? name 'car)
+      (eq? name 'cdr)
+      (eq? name 'null?)
+      (eq? name 'eq?)
+      (eq? name 'atom?)))
 
-    ((pair? expr)
-     (let ((head (car expr)))
-       (cond
-         ((eq? head 'lambda)
-          (let ((new-env (append (cadr expr) env)))
-            (check-unbound-vars (caddr expr) new-env)))
+;; ---------- Testing area -----------
 
-         (else
-          (and (check-unbound-vars head env)
-               (andmap (lambda (e) (check-unbound-vars e env)) (cdr expr)))))))
-
-    (else #t)))
-  
-
-;; --- Test cases ---
-
-(display (tls-syntax-checker '(add1 5))) (newline)
-(display (tls-syntax-checker '(lambda (x) (add1 x)))) (newline)
-(display (tls-syntax-checker '(lambda x (add1 x)))) (newline) ;; Should be #f
+(display (tls-syntax-checker '(add1 5))) (newline) ; #t
+(display (tls-syntax-checker '(lambda (x) (add1 x)))) (newline) ; #t
+(display (tls-syntax-checker '(lambda x (add1 x)))) (newline) ; #f
+(display (tls-syntax-checker '(cons 1 2))) (newline) ; #t
+(display (tls-syntax-checker '(cond ((zero? n) 1) (else 0)))) (newline) ; #t
+(display (tls-syntax-checker '(quote (1 2 3)))) (newline) ; #t
+(display (tls-syntax-checker '(quote))) (newline) ; #f
