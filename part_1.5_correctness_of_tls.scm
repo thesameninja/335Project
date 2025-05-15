@@ -175,4 +175,109 @@
 ;;; construct, relying on these correct components. Therefore, the entire R5RS
 ;;; implementation of TLS is correct with respect to the defined standard.
 ;;;
+
+;;;-----------------------------------------------------------------------------
+;;; V. Demonstrating Key Language Features in TLS
+;;;-----------------------------------------------------------------------------
+;;;
+;;; The correctness proof establishes that our TLS interpreter adheres to its
+;;; defined semantics. This adherence means TLS naturally supports fundamental
+;;; features like closures and first-class functions, which are direct consequences
+;;; of how `lambda`, environments, and application are implemented.
+;;;
+;;; A. Closures
+;;;
+;;; A closure is a procedure that "remembers" the environment in which it was
+;;; created. This is primarily achieved by the `*lambda` action capturing the
+;;; current `table` (environment) and `apply-closure` using this captured `table`
+;;; when the procedure is invoked.
+;;;
+;;; TLS Example Demonstrating Closures:
+;;;
+;;;   (let ((make-creator (lambda (captured-val)
+;;;                         (lambda (new-val)
+;;;                           (cons captured-val new-val)))))
+;;;     (let ((creator-for-10 (make-creator 10))
+;;;           (creator-for-abc (make-creator (quote abc))))
+;;;       ;; Now, creator-for-10 is a closure that has captured '10'.
+;;;       ;; And creator-for-abc is a closure that has captured 'abc'.
+;;;       ;; We can apply them to see this:
+;;;       (cons (creator-for-10 5)         ; Expected: (10 . 5)
+;;;             (creator-for-abc #t))))    ; Expected: ((abc . #t)) -> resulting in ((10 . 5) . ((abc . #t) . ()))
+;;;
+;;; How TLS handles this (and why it's correct):
+;;; 1. `(make-creator 10)`:
+;;;    - `make-creator` is called. `captured-val` becomes 10.
+;;;    - The inner `(lambda (new-val) (cons captured-val new-val))` is evaluated.
+;;;    - `*lambda` creates a closure. This closure packages:
+;;;      - The formals: `(new-val)`
+;;;      - The body: `(cons captured-val new-val)`
+;;;      - The current environment: This environment contains the binding `(captured-val . 10)`.
+;;;    - This closure is returned and bound to `creator-for-10`.
+;;; 2. `(make-creator (quote abc))` proceeds similarly, creating a closure for `creator-for-abc`
+;;;    where its captured environment contains `(captured-val . abc)`.
+;;; 3. `(creator-for-10 5)`:
+;;;    - `creator-for-10` (the closure) is applied to `5`.
+;;;    - `apply-closure` takes this closure and `5`.
+;;;    - It extends the closure's *captured* environment (where `captured-val` is 10)
+;;;      with the new binding `(new-val . 5)`.
+;;;    - The body `(cons captured-val new-val)` is evaluated in this extended environment.
+;;;      `captured-val` resolves to 10 (from the captured environment).
+;;;      `new-val` resolves to 5 (from the arguments).
+;;;    - Result is `(10 . 5)`.
+;;; 4. `(creator-for-abc #t)` works analogously, resulting in `(abc . #t)`.
+;;;
+;;; The successful execution of such an expression (producing `((10 . 5) abc . #t)`
+;;; if `cons` behaves as expected for the final `cons`) demonstrates that TLS correctly
+;;; implements closures, as each generated procedure remembers its distinct lexical environment.
+;;;
+;;; B. First-Class Functions
+;;;
+;;; First-class functions mean that functions are treated like any other value in the
+;;; language: they can be passed as arguments to other functions, returned as results
+;;; from functions, and assigned to variables (or bound in `let` expressions).
+;;;
+;;; TLS Example Demonstrating First-Class Functions (Passing as Argument):
+;;;
+;;;   (let ((apply-it (lambda (func arg)
+;;;                     (func arg))))
+;;;     (let ((increment (lambda (n) (add1 n))))
+;;;       (apply-it increment 100))) ; Expected: 101
+;;;
+;;; How TLS handles this:
+;;; 1. `(lambda (func arg) (func arg))` evaluates to a closure, bound to `apply-it`.
+;;; 2. `(lambda (n) (add1 n))` evaluates to a closure, bound to `increment`.
+;;; 3. `(apply-it increment 100)`:
+;;;    - `apply-it` (the closure) is called.
+;;;    - `func` is bound to the closure `increment`.
+;;;    - `arg` is bound to `100`.
+;;;    - The body `(func arg)` is evaluated. This becomes an application of the
+;;;      closure `increment` to the argument `100`.
+;;;    - `(increment 100)` is evaluated, which `apply-closure` handles by looking up
+;;;      `increment`'s body `(add1 n)`, extending its (empty in this case) captured
+;;;      environment with `(n . 100)`, and evaluating `(add1 n)`, yielding `101`.
+;;;
+;;; Returning functions as results is already demonstrated by the `make-creator`
+;;; example in the Closures section, where `make-creator` returns a new function (a closure).
+;;;
+;;; Storing in Data Structures (Conceptual):
+;;; While TLS's `cons` can store anything, including the internal representation of
+;;; closures, more complex examples might involve `let` bindings.
+;;;
+;;;   (let ((op (lambda (x) (add1 x)))) ; op is bound to a function
+;;;     (let ((data (cons op (quote (some-other-data))))) ; Function in car of a pair
+;;;       ((car data) 10))) ; Retrieve function from pair and apply it. Expected: 11
+;;;
+;;; How TLS handles this:
+;;; 1. `(lambda (x) (add1 x))` evaluates to a closure, bound to `op`.
+;;; 2. `(cons op ...)` creates a pair where the `car` is this closure. This pair is bound to `data`.
+;;; 3. `(car data)` evaluates `data` to the pair, then `car` extracts the closure.
+;;; 4. This extracted closure is then applied to `10`. `apply-closure` proceeds as usual.
+;;;
+;;; The ability of the TLS interpreter to execute these examples correctly, as per
+;;; the semantics outlined in the proof (especially how `*lambda` produces tagged
+;;; procedure values and `*application` with `tls-apply` handles them), confirms that
+;;; functions are indeed first-class citizens in TLS. They are data that can be
+;;; created, passed, returned, and applied, all consistent with the interpreter's
+;;; core evaluation rules.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

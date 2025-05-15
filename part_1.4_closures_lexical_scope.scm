@@ -185,3 +185,145 @@
 ;;; creation with environment capture) and `apply-closure` (using the captured environment
 ;;; for body evaluation), correctly implements lexical scope.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;-----------------------------------------------------------
+;;; IV. Structural Induction Proof for Lexical Scope Correctness
+;;;-----------------------------------------------------------------------------
+;;;
+;;; We want to prove that for any valid TLS expression `exp`, when evaluated as
+;;; `(meaning exp table)`, all variable lookups adhere to lexical scope rules.
+;;; Lexical scope means that a variable is resolved based on its textual position
+;;; in the source code; specifically, a free variable within a function body refers
+;;; to the binding of that variable in the environment where the function was *defined*,
+;;; not where it was *called*.
+;;;
+;;; Let `CorrectLexicalValue(name, table)` denote the value of `name` that would be
+;;; found by correctly applying lexical scoping rules within the environment `table`.
+;;; Our `lookup-in-table` function is assumed to correctly search an environment `table`
+;;; (a list of frames) from innermost to outermost. The core of the lexical scope
+;;; argument rests on ensuring `lookup-in-table` is always called with the
+;;; *lexically appropriate* `table`.
+;;;
+;;; We proceed by structural induction on the expression `exp` being evaluated
+;;; by `(meaning exp table)`.
+;;;
+;;; Base Cases (Atomic Expressions):
+;;;
+;;;   1. `exp` is a Constant (number, boolean, primitive name):
+;;;      `(meaning exp table)` calls `(*const exp table)`.
+;;;      `*const` returns `exp` or `(primitive exp)`. No variable lookups occur
+;;;      within `*const` itself for `exp`. Correct (vacuously true for lexical scope
+;;;      of variables within `exp`).
+;;;
+;;;   2. `exp` is an Identifier (variable `name`):
+;;;      `(meaning exp table)` calls `(*identifier name table)`.
+;;;      `*identifier` calls `(lookup-in-table name table initial-table)`.
+;;;      The variable `name` is looked up directly in the current environment `table`
+;;;      passed to `meaning`. This is correct for variables not enclosed in any
+;;;      further lexical constructs within `exp` itself. `table` here represents the
+;;;      current lexical context. If `table` has been correctly constructed by
+;;;      outer constructs (see inductive steps), then `lookup-in-table` will yield
+;;;      `CorrectLexicalValue(name, table)`.
+;;;
+;;; Inductive Hypothesis (IH):
+;;;   Assume that for any proper subexpression `sub_exp` of `exp`, evaluating
+;;;   `(meaning sub_exp table')` correctly adheres to lexical scope for all
+;;;   variable lookups within `sub_exp`. This means that `table'` is the
+;;;   lexically appropriate environment for evaluating `sub_exp`.
+;;;
+;;; Inductive Steps (Compound Expressions):
+;;;
+;;;   1. `exp = ('quote datum)`:
+;;;      `(meaning exp table)` calls `(*quote exp table)`, which returns `datum`.
+;;;      No evaluation of subexpressions, no variable lookups within `datum`.
+;;;      Correct for lexical scope.
+;;;
+;;;   2. `exp = ('lambda formals body-exp)`:
+;;;      `(meaning exp table)` calls `(*lambda exp table)`.
+;;;      `*lambda` creates a closure `(non-primitive (list table formals body-exp))`.
+;;;      The crucial step here is that the *current* environment `table` (the
+;;;      definition-time environment) is captured and stored within the closure structure.
+;;;      This is the cornerstone of lexical scope. The creation itself doesn't evaluate
+;;;      `body-exp` yet. Correct.
+;;;
+;;;   3. `exp = ('cond (q1 a1) (q2 a2) ...)`:
+;;;      `(meaning exp table)` calls `(*cond exp table)`, which calls `(evcon lines table)`.
+;;;      `evcon` evaluates `q_i` using `(meaning q_i table)`. By IH, variable
+;;;      lookups in `q_i` are lexically correct with respect to `table`.
+;;;      If `q_i` is true, `evcon` evaluates `a_i` using `(meaning a_i table)`.
+;;;      By IH, variable lookups in `a_i` are lexically correct with respect to `table`.
+;;;      The environment `table` remains the same lexical environment for all parts
+;;;      of the `cond`. Correct.
+;;;
+;;;   4. `exp = (operator operand1 ... operand_k)` (Application):
+;;;      `(meaning exp table)` calls `(*application exp table)`.
+;;;      `*application` first evaluates the operator: `proc_val = (meaning operator table)`.
+;;;      By IH, any variable lookups within `operator` (if it's complex) are
+;;;      lexically correct with respect to `table`.
+;;;      Then, arguments are evaluated: `arg_vals = (evlis operands table)`.
+;;;      `evlis` calls `(meaning operand_i table)` for each operand. By IH, variable
+;;;      lookups within each `operand_i` are lexically correct with respect to `table`.
+;;;
+;;;      `*application` then calls `(tls-apply proc_val arg_vals)`:
+;;;      a. If `proc_val` is a primitive:
+;;;         `(apply-primitive-handler name arg_vals)` is called. Primitives operate
+;;;         on values; they don't perform lexical variable lookups in user code context.
+;;;         Correct.
+;;;      b. If `proc_val` is a closure `(non-primitive (list E_def formals_closure body_closure))`:
+;;;         `(apply-closure proc_val arg_vals)` is called.
+;;;         Inside `apply-closure`:
+;;;         i.  The captured definition-time environment `E_def` is extracted.
+;;;         ii. A new environment frame `E_args` is created by binding `formals_closure` to `arg_vals`.
+;;;             `(new-entry formals_closure arg_vals)`
+;;;         iii.The execution environment for the body is `E_exec = (extend-table E_args E_def)`.
+;;;             This `E_exec` places argument bindings innermost, followed by the
+;;;             bindings from the definition-time environment `E_def`.
+;;;         iv. `(meaning body_closure E_exec)` is called.
+;;;             Now, when `body_closure` is evaluated:
+;;;             - If an identifier in `body_closure` is one of `formals_closure`,
+;;;               `lookup-in-table` finds it in `E_args`. Correct.
+;;;             - If an identifier in `body_closure` is a free variable (not one of
+;;;               `formals_closure`), `lookup-in-table` searches beyond `E_args`
+;;;               into `E_def`. This is precisely lexical scope: free variables
+;;;               are resolved in the environment captured at the time of the
+;;;               lambda's definition (`E_def`).
+;;;             By IH (applied to `body_closure` as a subexpression evaluated in the
+;;;             newly constructed `E_exec`), variable lookups within `body_closure`
+;;;             will be resolved correctly according to this `E_exec`. Since `E_exec`
+;;;             is constructed to prioritize arguments and then fall back to `E_def`,
+;;;             this correctly implements lexical scope.
+;;;
+;;;   5. `exp = ('let ((v1 e1) ... (vk ek)) body1 ... body_m)`:
+;;;      `(meaning exp table)` calls `(*let exp table)`.
+;;;      `*let` desugars `exp` into an equivalent application:
+;;;      `desugared_exp = ((lambda (v1 ... vk) effective_body) e1_eval ... ek_eval)`
+;;;      (where `effective_body` is `body_m`, and `e_i_eval` are the expressions to get initial values).
+;;;      It then calls `(meaning desugared_exp table)`.
+;;;      This reduces the correctness of `let` to the correctness of application
+;;;      and lambda, which are covered in step 4 and step 2 (for lambda creation).
+;;;      - The expressions `e1 ... ek` (in `initial-val-exps` inside `*let`) are evaluated
+;;;        effectively in the context of `table` when the desugared lambda is applied
+;;;        (as they become arguments to the desugared lambda).
+;;;        More precisely, the arguments to the created lambda `(lambda (v1 ... vk) effective_body)`
+;;;        are the *values* resulting from evaluating `e1 ... ek` in the original `table`.
+;;;        This is handled by `evlis` during the evaluation of `desugared_exp`.
+;;;        So, any free variables in `e1 ... ek` are looked up in `table`. Correct.
+;;;      - When the `effective_body` of the desugared lambda is evaluated, its environment
+;;;        will be the `table` (captured by the implicit lambda) extended by `v1 ... vk`.
+;;;        This correctly implements `let` semantics: bindings are local to the body,
+;;;        and free variables in the body refer to bindings outside the `let` or
+;;;        to outer `let` bindings if nested, following lexical rules due to the
+;;;        lambda's captured environment.
+;;;
+;;; Conclusion:
+;;;   Through structural induction, we have shown that for each type of TLS expression,
+;;;   the evaluation process either directly uses the passed lexical environment `table`
+;;;   or, in the crucial case of lambda application, constructs a new environment
+;;;   `E_exec` that correctly chains the argument bindings with the lambda's
+;;;   definition-time environment `E_def`. This ensures that all variable lookups,
+;;;   particularly for free variables within function bodies, adhere to the rules of
+;;;   lexical scope by referring to the environment where the function was defined.
+;;;   The implementation mechanisms of closure creation (capturing `table` in `*lambda`)
+;;;   and closure application (using the captured `table` in `apply-closure`) are
+;;;   fundamental to this correctness.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
