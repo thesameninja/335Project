@@ -1,3 +1,10 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Final Project: CSc 335 Project Spring 2025 
+;;
+;; Team: Sohail Ahmad, Umaima Nasim, Jia Xiang Zhang
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
 ;; part_1.2_syntax_checker.scm
 ;; Implements a purely functional R5RS syntax checker for TLS (TLS-LET).
 ;; This checker verifies syntax without evaluating expressions, detecting issues like

@@ -1,3 +1,10 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Final Project: CSc 335 Project Spring 2025 
+;;
+;; Team: Sohail Ahmad, Umaima Nasim, Jia Xiang Zhang
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
 ;; part_1.4_closures_lexical_scope.scm
 ;;
 ;; This file contains the write-up for Part 1.4 of the TLS project.

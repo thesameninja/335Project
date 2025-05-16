@@ -1,3 +1,11 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Final Project: CSc 335 Project Spring 2025 
+;;
+;; Team: Sohail Ahmad, Umaima Nasim, Jia Xiang Zhang
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+
 ;; part_1.3_interpreter_list_env.scm
 ;; Implements the TLS interpreter with the environment representation changed
 ;; to use lists of bindings (frames of (name value) pairs), in Part 1.3.
@@ -172,8 +180,7 @@
 ;;;   - A 'binding' is `(list name value)`.
 ;;;   - A 'frame' (scope) is a list of 'bindings'.
 ;;;   - A 'table' (environment) is a list of 'frames'.
-;;; How tables shrink: Similar to the original, scope exit leads to R5RS doing garbage collection of
-;;; unreferenced frame lists. TLS logic manages active scope via environment passing.
+;;; How tables shrink: Similar to the original, upon each function call return, the top of the stack is released leading to table shrinking. TLS logic manages active scope via environment passing.
 ;;;-----------------------------------------------------------------------------
 
 ;; (new-entry names values) -> frame?

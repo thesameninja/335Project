@@ -1,3 +1,10 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Final Project: CSc 335 Project Spring 2025 
+;;
+;; Team: Sohail Ahmad, Umaima Nasim, Jia Xiang Zhang
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
 ;; part_1.1_interpreter_original.scm
 ;; Implements the TLS interpreter based on Chapter 10 of "The Little Schemer".
 ;; This version uses the original environment representation (names-values pairs)
